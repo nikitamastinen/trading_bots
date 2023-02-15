@@ -37,7 +37,7 @@ def less(a: str, b: str) -> bool:
 
 
 class KLine:
-	def __init__(self, coin: str, base_currency: str, interval_tm: str,  X: int = 80):
+	def __init__(self, coin: str, base_currency: str, interval_tm: str,  X: int = 100):
 		self.coin: str = coin
 		self.base_currency_ = base_currency
 		self.opens: List[List[int, str]] = []
@@ -132,8 +132,8 @@ class Grid:
 		self.coin_pool_value: str = '0'
 		self.base_pool_value: str = '0'
 		self.sum: float = 0
-		self.S: float = 0.006  # change
-		self.interval_tf = '1m'  # change
+		self.S: float = 0.0005  # change
+		self.interval_tf = '1s'  # change
 
 	async def cancel_all_isolated_orders_(self):
 		try:
