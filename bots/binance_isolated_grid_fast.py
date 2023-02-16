@@ -37,7 +37,7 @@ def less(a: str, b: str) -> bool:
 
 
 class KLine:
-	def __init__(self, coin: str, base_currency: str, interval_tm: str,  X: int = 100):
+	def __init__(self, coin: str, base_currency: str, interval_tm: str, X: int = 80):
 		self.coin: str = coin
 		self.base_currency_ = base_currency
 		self.opens: List[List[int, str]] = []
@@ -132,7 +132,7 @@ class Grid:
 		self.coin_pool_value: str = '0'
 		self.base_pool_value: str = '0'
 		self.sum: float = 0
-		self.S: float = 0.0005  # change
+		self.S: float = 0.0006  # change
 		self.interval_tf = '1s'  # change
 
 	async def cancel_all_isolated_orders_(self):
@@ -165,7 +165,7 @@ class Grid:
 						await self.rest_client_.repay_margin_loan(
 							asset=self.coin_,
 							symbol=f'{self.coin_}{self.base_currency_}',
-							amount=custom_round(i['baseAsset']['borrowed'], 3),
+							amount=custom_round(min(float(i['baseAsset']['borrowed']), float(i['baseAsset']['totalAsset'])), 5),
 							isIsolated='TRUE',
 						)
 						await self.logger.detailed_log(f'norm_target_pool:repay_{self.coin_}', color=Fore.YELLOW)
@@ -176,12 +176,14 @@ class Grid:
 						await self.rest_client_.repay_margin_loan(
 							asset=self.base_currency_,
 							symbol=f'{self.coin_}{self.base_currency_}',
-							amount=custom_round(i['quoteAsset']['borrowed'], 3),
+							amount=custom_round(min(float(i['quoteAsset']['borrowed']), float(i['quoteAsset']['totalAsset'])), 5),
 							isIsolated='TRUE',
 						)
-						await self.logger.detailed_log(f'norm_target_pool:repay_{self.base_currency_}', color=Fore.YELLOW)
+						await self.logger.detailed_log(f'norm_target_pool:repay_{self.base_currency_}',
+						                               color=Fore.YELLOW)
 					except Exception as e:
-						await self.logger.detailed_log(f'norm_target_pool:exc_{self.base_currency_} {e}', color=Fore.YELLOW)
+						await self.logger.detailed_log(f'norm_target_pool:exc_{self.base_currency_} {e}',
+						                               color=Fore.YELLOW)
 					break
 		# ----------------------------- NORM ---------------------------------------------------------------------------
 		if iterations == 0:
@@ -218,7 +220,7 @@ class Grid:
 						)
 						await self.logger.detailed_log('norm_target_pool:order:', result, color=Fore.YELLOW)
 						# exit(0)
-						return
+						await self.norm_target_pool(iterations - 1)
 
 		except BinanceAPIException as e:
 			await self.logger.detailed_log('norm_target_pool:EXCEPTION:', e, color=Fore.YELLOW)
@@ -344,14 +346,14 @@ class Grid:
 
 	@repeatable
 	async def get_current_balance(self):
-		print('bal')
 		positions = await self.rest_client_.get_isolated_margin_account(
 			symbol=f'{self.coin_}{self.base_currency_}')
 		for i in positions['assets']:
 			if i['symbol'] == f'{self.coin_}{self.base_currency_}':
 				price = await self.rest_client_.get_avg_price(symbol=f'{self.coin_}{self.base_currency_}')
-				balance = (float(i['baseAsset']['totalAsset']) - float(i['baseAsset']['borrowed'])) * float(price['price']) + (
-						float(i['quoteAsset']['totalAsset']) - float(i['quoteAsset']['borrowed']))
+				balance = (float(i['baseAsset']['totalAsset']) - float(i['baseAsset']['borrowed'])) * float(
+					price['price']) + (
+						          float(i['quoteAsset']['totalAsset']) - float(i['quoteAsset']['borrowed']))
 				print('balis', balance)
 				return balance
 
@@ -368,22 +370,26 @@ class Grid:
 					result = await self.rest_client_.create_margin_loan(
 						asset=f'{self.coin_}',
 						symbol=f'{self.coin_}{self.base_currency_}',
-						amount=custom_round(int(amount) * self.leverage * 0.94 / float(price), 3),
+						amount=custom_round(int(amount) * self.leverage * 0.94 / float(price), 5),
 						isIsolated='TRUE'
 					)
 					print('RESULT', result)
-					await self.logger.detailed_log(f'borrow:created short {self.coin_} {custom_round(int(amount) * self.leverage * 0.95 / float(price), 3)}', Fore.LIGHTGREEN_EX)
+					await self.logger.detailed_log(
+						f'borrow:created short {self.coin_} {custom_round(int(amount) * self.leverage * 0.95 / float(price), 3)}',
+						Fore.LIGHTGREEN_EX)
 
 				if self.is_long:
 					await self.logger.detailed_log(f'borrow:creating {self.base_currency_} loan...', Fore.GREEN)
 					result = await self.rest_client_.create_margin_loan(
 						asset=f'{self.base_currency_}',
 						symbol=f'{self.coin_}{self.base_currency_}',
-						amount=custom_round(int(amount) * self.leverage * 0.94, 3),
+						amount=custom_round(int(amount) * self.leverage * 0.94, 5),
 						isIsolated='TRUE'
 					)
 					print('RESULT', result)
-					await self.logger.detailed_log(f'borrow:created long {self.base_currency_} {custom_round(int(amount) * self.leverage * 0.95, 3)}', Fore.GREEN)
+					await self.logger.detailed_log(
+						f'borrow:created long {self.base_currency_} {custom_round(int(amount) * self.leverage * 0.95, 3)}',
+						Fore.GREEN)
 				return True
 			except BinanceAPIException as e:
 				print(e)
@@ -393,15 +399,15 @@ class Grid:
 
 	@repeatable
 	async def update_pools(self):
-		async with self.mutex:
-			positions = await self.rest_client_.get_isolated_margin_account(
-				symbol=f'{self.coin_}{self.base_currency_}')
-			await self.logger.detailed_log('update_pools:positions', color=Fore.MAGENTA)
-			for i in positions['assets']:
-				if i['symbol'] == self.coin_ + self.base_currency_:
-					self.base_pool_value = i['quoteAsset']['borrowed']
-					self.coin_pool_value = i['baseAsset']['borrowed']
-					break
+		await asyncio.sleep(0.5)
+		positions = await self.rest_client_.get_isolated_margin_account(
+			symbol=f'{self.coin_}{self.base_currency_}')
+		await self.logger.detailed_log('update_pools:positions', color=Fore.MAGENTA)
+		for i in positions['assets']:
+			if i['symbol'] == self.coin_ + self.base_currency_:
+				self.base_pool_value = i['quoteAsset']['borrowed']
+				self.coin_pool_value = i['baseAsset']['borrowed']
+				break
 
 	async def iteration(self):
 		async def cor():
@@ -427,11 +433,12 @@ class Grid:
 					continue
 				await self.update_pools()
 				if self.is_long:
-					self.quantity = custom_round(float(self.base_pool_value) / float(self.price_[1]) / 4.05, 3)
+					self.quantity = custom_round(float(self.base_pool_value) / float(self.price_[1]) / 4.1, 5)
 				else:
-					self.quantity = custom_round(float(self.coin_pool_value) / 4.05, 3)
+					self.quantity = custom_round(float(self.coin_pool_value) / 4.1, 5)
 
-				print('starting iteration')
+				print('starting iteration', self.quantity)
+				await self.logger.detailed_log(self.quantity, color=Fore.BLUE)
 				asyncio.ensure_future(self.logger.log(
 					f'{"long" if self.is_long else "short"} enter'
 				))
